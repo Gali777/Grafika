@@ -1,2 +1,1 @@
-# Grafika
-Számítógépi grafika tantárgy feladatok
+Egy véletlenszerűen generált labirintusból kell kijutnia a játékosnak. Nem elég a kijáratot megtalálnia a játékosnak, először szüksége lesz a labirintuson belül véletlenszerűen megjelenő kulcs megtalálására, hogy kinyíljon az ajtó. Belső nézetből irányíthatja a karaktert a játékos.

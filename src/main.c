@@ -14,17 +14,18 @@
 #include <info.h>
 #include <draw.h>
 #include <transform.h>
+#include <float.h>
 
 #define WIDTH 1024
 #define HEIGHT 768
 #define FOV 90.0
 #define NEAR_CLIP 0.1
 #define FAR_CLIP 100.0
-#define MOVE_SPEED 0.25
+#define MOVE_SPEED 0.03
 #define MOUSE_SENSITIVITY 0.2
 
-#define MAZE_WIDTH 40 //X
-#define MAZE_HEIGHT 40 //Z
+#define MAZE_WIDTH 20 //X
+#define MAZE_HEIGHT 20 //Z
 #define MAZE_DEPTH 1 //Y
 #define WALL 1
 #define ROUTE 0
@@ -57,24 +58,13 @@ typedef struct {
 
 bool keys[256] = { false };
 
-typedef struct {
-    int x;
-    int y;
-    int z;
-} WallCoordinate;
 
-WallCoordinate wallCoordinates[MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH];
 int numWalls = 0;
 
-int wallPositions[MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH][2][2][3];
+int wallPositions[MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH*2][2][2][3];
 int wallCount = 0;
 
 int maze[MAZE_HEIGHT][MAZE_WIDTH];
-
-	GLfloat light_position[] = {20.0, 5.0, 20.0}; //1.0};
-	GLfloat light_ambient[] = { 1.0, 1.0, 1.0, 1.0};
-	GLfloat light_diffuse[] = {1.0, 1.0, 1.0, 1.0};
-	GLfloat light_specular[] = {1.0, 1.0, 1.0, 32.0};
 
 	typedef struct {
     float direction[3];  // Direction of sunlight
@@ -89,6 +79,7 @@ typedef struct {
     int texture;
     struct Vertex position;
 }Object;
+
 
 void changeLightintensity(float amount) {
     
@@ -109,7 +100,29 @@ void changeLightintensity(float amount) {
 int isHelpOn = 0;
 int firstRow, firstCol;
 int secondRow, secondCol;	
+int exitRow, exitCol;
 int haveKey = 0;
+int exitActionsPerformed = 0;
+bool doorOpen = false;
+float doorRotation = 0.0f;
+
+GLfloat light_position[] = {0, 30, 30};//, 0};
+GLfloat light_ambient[] = { 0.8, 0.8, 0.8, 0.8};
+GLfloat light_diffuse[] = {0.3, 0.3, 0.3, 0.9};
+GLfloat light_specular[] = {1.0, 1.0, 1.0, 1.0};
+
+void init() {
+    // Enable lighting
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+    glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
+
+    // Enable depth testing
+    glEnable(GL_DEPTH_TEST);
+}
 
 void handle_events() {
     SDL_Event event;
@@ -173,22 +186,31 @@ GLuint loadTexture(const char* filePath) {
     return textureID;
 }
 
+float calculateDistance(float x1, float y1, float x2, float y2) {
+    float dx = x2 - x1;
+    float dy = y2 - y1;
+    return sqrtf(dx * dx + dy * dy);
+}
+
+int isPlayerCloseToExit() {
+    // Calculate the distance between the player and the exit based on their coordinates
+    // Replace this calculation with your own logic based on your game's requirements
+    float distance = calculateDistance(cam.position.x, cam.position.z, exitRow, exitCol);
+
+    // Adjust the threshold value as needed
+    float threshold = 2.0f;
+
+    // Return 1 if the player is close to the exit, otherwise return 0
+    return (distance <= threshold);
+}
+
+
+
 void drawMaze() {
-	GLfloat sun_direction[] = { sunlight.direction[0], sunlight.direction[1], sunlight.direction[2], 0.0 };
-	GLfloat sun_intensity[] = { sunlight.intensity, sunlight.intensity, sunlight.intensity, 1.0 };
-
-	glLightfv(GL_LIGHT0, GL_POSITION, sun_direction);
-	glLightfv(GL_LIGHT0, GL_DIFFUSE, sun_intensity);
-	glEnable(GL_LIGHTING);
-	glEnable(GL_LIGHT0);
-	
-	GLfloat material_diffuse[] = { 1.0, 1.0, 1.0, 1.0 };  // Object color
-
-	glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, material_diffuse);
-	
 GLuint faltextura = loadTexture("assets/brickwall.bmp");
 GLuint talajtextura = loadTexture("assets/ground.bmp");
-
+glEnable(GL_TEXTURE_2D);
+glEnable(GL_LIGHTING);
 glBindTexture(GL_TEXTURE_2D,faltextura);
 
     glBegin(GL_QUADS);
@@ -201,30 +223,27 @@ glBindTexture(GL_TEXTURE_2D,faltextura);
                     float zmin = z * CELL_SIZE;
                     float zmax = (z + 1) * CELL_SIZE;
 					
-					// Draw front face
-					
+					// Draw front face					
+					glNormal3f(0.0f, 0.0f, -1.0f);
                     glBegin(GL_QUADS);
-					//glColor3f(1, 1, 1);
                     glTexCoord2f(0.0f, 0.0f); glVertex3f(xmin, 0, zmin);
                     glTexCoord2f(1.0f, 0.0f); glVertex3f(xmax, 0, zmin);
                     glTexCoord2f(1.0f, 1.0f); glVertex3f(xmax, MAZE_DEPTH, zmin);
                     glTexCoord2f(0.0f, 1.0f); glVertex3f(xmin, MAZE_DEPTH, zmin);
                     glEnd();
 					
-                    // Draw back face
-					
+                    // Draw back face				
+					glNormal3f(0.0f, 0.0f, 1.0f);
                     glBegin(GL_QUADS);
-					//glColor3f(0.25, 0.25, 0.25);
                     glTexCoord2f(1.0f, 0.0f); glVertex3f(xmin, 0, zmax);
                     glTexCoord2f(1.0f, 1.0f); glVertex3f(xmin, MAZE_DEPTH, zmax);
                     glTexCoord2f(0.0f, 1.0f); glVertex3f(xmax, MAZE_DEPTH, zmax);
                     glTexCoord2f(0.0f, 0.0f); glVertex3f(xmax, 0, zmax);
                     glEnd();
 					
-                    // Draw left face
-					
+                    // Draw left face				
+					glNormal3f(-1.0f, 0.0f, 0.0f);
                     glBegin(GL_QUADS);
-					//glColor3f(0.5, 0.5, 0.5);
                     glTexCoord2f(1.0f, 0.0f); glVertex3f(xmin, 0, zmin);
                     glTexCoord2f(1.0f, 1.0f); glVertex3f(xmin, MAZE_DEPTH, zmin);
                     glTexCoord2f(0.0f, 1.0f); glVertex3f(xmin, MAZE_DEPTH, zmax);
@@ -232,10 +251,9 @@ glBindTexture(GL_TEXTURE_2D,faltextura);
                     glEnd();
 					
 					
-                    // Draw right face
-					
+                    // Draw right face				
+					glNormal3f(1.0f, 0.0f, 0.0f);				
                     glBegin(GL_QUADS);
-					//glColor3f(0.5, 0.5, 0.5);
                     glTexCoord2f(1.0f, 1.0f); glVertex3f(xmax, 0, zmin);
                     glTexCoord2f(0.0f, 1.0f); glVertex3f(xmax, 0, zmax);
                     glTexCoord2f(0.0f, 0.0f); glVertex3f(xmax, MAZE_DEPTH, zmax);
@@ -243,16 +261,16 @@ glBindTexture(GL_TEXTURE_2D,faltextura);
                     glEnd();
 					
 					// Draw top face
+					glNormal3f(0.0f, 1.0f, 0.0f);					
 					glBegin(GL_QUADS);
-					//GlColor3f(0.5, 0.5, 0.5);
 					glVertex3f(xmin, MAZE_DEPTH, zmin);
 					glVertex3f(xmax, MAZE_DEPTH, zmin);
 					glVertex3f(xmax, MAZE_DEPTH, zmax);
 					glVertex3f(xmin, MAZE_DEPTH, zmax);
 					
 					// Draw bottom face
+					glNormal3f(0.0f, -1.0f, 0.0f);
 					glBegin(GL_QUADS);
-					//glColor3f(0.5, 0.5, 0.5);
 					glVertex3f(xmin,0, zmin);
 					glVertex3f(xmax,0, zmin);
 					glVertex3f(xmax,0, zmax);
@@ -263,8 +281,8 @@ glBindTexture(GL_TEXTURE_2D,faltextura);
 	
 	
 for (int i = 0; i <= MAZE_WIDTH-1; i++) {
-    //észak
-    //glColor3f(1, 1, 1);
+    //north
+    glNormal3f(0.0f, 0.0f, -1.0f);
     glTexCoord2f(0.0f, 0.0f); glVertex3f(i * CELL_SIZE, 0.0f, MAZE_HEIGHT);
     glTexCoord2f(1.0f, 0.0f); glVertex3f((i+1) * CELL_SIZE, 0.0f, MAZE_HEIGHT);
     glTexCoord2f(1.0f, 1.0f); glVertex3f((i+1) * CELL_SIZE, MAZE_DEPTH, MAZE_HEIGHT);
@@ -272,8 +290,8 @@ for (int i = 0; i <= MAZE_WIDTH-1; i++) {
 }
 
 for (int i = 0; i < MAZE_WIDTH; i++) {
-    //dél
-    //glColor3f(0.25, 0.25, 0.25);
+    //south
+    glNormal3f(0.0f, 0.0f, 1.0f);
     glTexCoord2f(0.0f, 0.0f); glVertex3f(i * CELL_SIZE, 0.0, 0.0);
     glTexCoord2f(1.0f, 0.0f); glVertex3f((i + 1) * CELL_SIZE, 0.0, 0.0);
     glTexCoord2f(1.0f, 1.0f); glVertex3f((i + 1) * CELL_SIZE, MAZE_DEPTH, 0.0);
@@ -281,31 +299,143 @@ for (int i = 0; i < MAZE_WIDTH; i++) {
 }
 
 for (int i = 0; i < MAZE_HEIGHT; i++) {
-    //kelet
-    //glColor3f(0.5, 0.5, 0.5);
+    //east
+    glNormal3f(1.0f, 0.0f, 0.0f);
     glTexCoord2f(1.0f, 0.0f); glVertex3f(0.0, 0.0, i*CELL_SIZE);
     glTexCoord2f(1.0f, 1.0f); glVertex3f(0.0, MAZE_DEPTH, i*CELL_SIZE);
     glTexCoord2f(0.0f, 1.0f); glVertex3f(0.0, MAZE_DEPTH, (i+1)*CELL_SIZE);
     glTexCoord2f(0.0f, 0.0f); glVertex3f(0.0, 0.0, (i+1)*CELL_SIZE);
 }
 
-for (int i = 0; i < MAZE_HEIGHT; i++) {
-    //nyugat
-    glColor3f(0.5, 0.5, 0.5);
+for (int i = 0; i < exitCol-1; i++) {
+    //west
+    glNormal3f(-1.0f, 0.0f, 0.0f);
     glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH, 0.0, i*CELL_SIZE);
     glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH, MAZE_DEPTH, i*CELL_SIZE);
     glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH, MAZE_DEPTH, (i+1)*CELL_SIZE);
     glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH, 0.0, (i+1)*CELL_SIZE);
 }
+for (int i = exitCol; i < MAZE_HEIGHT; i++) {
+    glNormal3f(-1.0f, 0.0f, 0.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH, 0.0, i*CELL_SIZE);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH, MAZE_DEPTH, i*CELL_SIZE);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH, MAZE_DEPTH, (i+1)*CELL_SIZE);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH, 0.0, (i+1)*CELL_SIZE);
+}
+    glNormal3f(-1.0f, 0.0f, 0.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH, 0.0, exitCol-0.75);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH, MAZE_DEPTH, exitCol-0.75);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH, MAZE_DEPTH, exitCol-1.0);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH, 0.0, exitCol-1.0); 
+	
+	glNormal3f(-1.0f, 0.0f, 0.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH, 0.0, exitCol);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH, MAZE_DEPTH, exitCol);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH, MAZE_DEPTH, exitCol-0.25);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH, 0.0, exitCol-0.25); 
+
+	//Cup room
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0, 0.0, exitCol-0.75);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0, MAZE_DEPTH, exitCol-0.75);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH, MAZE_DEPTH, exitCol-0.75);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH, 0.0, exitCol-0.75); 
+	
+	glNormal3f(0.0f, 0.0f, -1.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH, 0.0, exitCol-0.25);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH, MAZE_DEPTH, exitCol-0.25);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0, MAZE_DEPTH, exitCol-0.25);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0, 0.0, exitCol-0.25); 
+	
+	glNormal3f(1.0f, 0.0f, 0.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0, 0.0, exitCol-0.75);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0, MAZE_DEPTH, exitCol-0.75);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0, MAZE_DEPTH, exitCol-1.0);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0, 0.0, exitCol-1.0); 
+	
+	glNormal3f(1.0f, 0.0f, 0.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0, 0.0, exitCol);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0, MAZE_DEPTH, exitCol);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0, MAZE_DEPTH, exitCol-0.25);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0, 0.0, exitCol-0.25);
+
+	for (int i = 1; i < 3; i++) {
+    glNormal3f(1.0f, 0.0f, 0.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0, 0.0, exitCol-1+(i*CELL_SIZE));
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0, MAZE_DEPTH, exitCol-1+(i*CELL_SIZE));
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0, MAZE_DEPTH, exitCol-1+((i+1)*CELL_SIZE));
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0, 0.0, exitCol-1+((i+1)*CELL_SIZE));
+		
+	glNormal3f(1.0f, 0.0f, 0.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0, 0.0, exitCol-4+(i*CELL_SIZE));
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0, MAZE_DEPTH, exitCol-4+(i*CELL_SIZE));
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0, MAZE_DEPTH, exitCol-4+((i+1)*CELL_SIZE));
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0, 0.0, exitCol-4+((i+1)*CELL_SIZE));
+	
+}
+
+	for (int i = 0; i < 5; i++) {
+    glNormal3f(0.0f, 0.0f, 1.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0+(i+1*CELL_SIZE), 0.0, exitCol-3);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0+(i+1*CELL_SIZE), MAZE_DEPTH, exitCol-3);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0+(i*CELL_SIZE), MAZE_DEPTH, exitCol-3);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0+(i*CELL_SIZE), 0.0, exitCol-3);
+	
+	glNormal3f(0.0f, 0.0f, -1.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0+(i+1*CELL_SIZE), 0.0, exitCol+2);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0+(i+1*CELL_SIZE), MAZE_DEPTH, exitCol+2);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+1.0+(i*CELL_SIZE), MAZE_DEPTH, exitCol+2);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+1.0+(i*CELL_SIZE), 0.0, exitCol+2);
+	
+	glNormal3f(-1.0f, 0.0f, 0.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+6.0, 0.0, exitCol-3+(i*CELL_SIZE));
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+6.0, MAZE_DEPTH, exitCol-3+(i*CELL_SIZE));
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+6.0, MAZE_DEPTH, exitCol-3+((i+1)*CELL_SIZE));
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+6.0, 0.0, exitCol-3+((i+1)*CELL_SIZE));
+}	
+
+	for (int i = 0; i < 1; i++){
+	glNormal3f(-1.0f, 0.0f, 0.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+3.0, 0.0, exitCol-1+(i*CELL_SIZE));
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+3.0, 0.3, exitCol-1+(i*CELL_SIZE));
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+3.0, 0.3, exitCol-1+((i+1)*CELL_SIZE));
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+3.0, 0.0, exitCol-1+((i+1)*CELL_SIZE));
+	
+	glNormal3f(1.0f, 0.0f, 0.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+4.0, 0.0, exitCol-1+(i*CELL_SIZE));
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+4.0, 0.3, exitCol-1+(i*CELL_SIZE));
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+4.0, 0.3, exitCol-1+((i+1)*CELL_SIZE));
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+4.0, 0.0, exitCol-1+((i+1)*CELL_SIZE));
+	
+	glNormal3f(0.0f, 0.0f, -1.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+3.0+((i+1)*CELL_SIZE), 0.0, exitCol-1);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+3.0+((i+1)*CELL_SIZE), 0.3, exitCol-1);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+3.0+(i*CELL_SIZE), 0.3, exitCol-1);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+3.0+(i*CELL_SIZE), 0.0, exitCol-1);
+	
+	glNormal3f(0.0f, 0.0f, 1.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+3.0+((i+1)*CELL_SIZE), 0.0, exitCol);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+3.0+((i+1)*CELL_SIZE), 0.3, exitCol);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+3.0+(i*CELL_SIZE), 0.3, exitCol);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+3.0+(i*CELL_SIZE), 0.0, exitCol);
+	}
+	
+	glNormal3f(0.0f, 1.0f, 0.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+3.0, 0.3, exitCol);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+4.0, 0.3, exitCol);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+4.0, 0.3, exitCol-1.0);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+3.0, 0.3, exitCol-1.0);
+	
+
+
 glEnd();
 glDeleteTextures(1, &faltextura);
 glBindTexture(GL_TEXTURE_2D,talajtextura);
 
     for (int x = 0; x < MAZE_WIDTH; x++) {
             for (int z = 0; z < MAZE_HEIGHT; z++) {
-		//talaj
+		//ground
+		glNormal3f(0.0f, 1.0f, 0.0f);
 		glBegin(GL_QUADS);
-		//glColor3f(1.0, 1.0, 1.0);
 		glTexCoord2f(0.0f, 0.0f); glVertex3f((x + 1) * CELL_SIZE, 0.0, z * CELL_SIZE);// bal alsó
 		glTexCoord2f(1.0f, 0.0f); glVertex3f(x * CELL_SIZE, 0.0, z * CELL_SIZE); //jobb alsó
 		glTexCoord2f(1.0f, 1.0f); glVertex3f(x * CELL_SIZE, 0.0, (z + 1) * CELL_SIZE); //jobb felső
@@ -313,6 +443,17 @@ glBindTexture(GL_TEXTURE_2D,talajtextura);
 			}
 	}
 	
+		for (int x = 0; x < 6; x++) {
+		for (int z = 0; z < 6; z++){
+	glNormal3f(0.0f, 1.0f, 0.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(MAZE_WIDTH+(x + 1) * CELL_SIZE, 0.0,exitCol-3+(z*CELL_SIZE));
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(MAZE_WIDTH+(x * CELL_SIZE), 0.0,exitCol-3+(z*CELL_SIZE));
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(MAZE_WIDTH+(x * CELL_SIZE), 0.0, exitCol-3+((z+1)*CELL_SIZE));
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(MAZE_WIDTH+(x + 1) * CELL_SIZE, 0.0,exitCol-3+((z+1)*CELL_SIZE));
+		}
+	}
+	
+	glDisable(GL_LIGHTING);
 glEnd();
 glDeleteTextures(1, &talajtextura);
 
@@ -334,26 +475,22 @@ void update_camera() {
         .y = 1.0,
         .z = 0.0
     };
-
+	
+	
 	float cameraRadius = PLAYER_RADIUS;
 	    float moveSpeed = MOVE_SPEED;
     if (keys[SDL_SCANCODE_LSHIFT]) {
-        moveSpeed *= 0.2;  
+        moveSpeed *= 1;  
     }
 	
     if (keys[SDL_SCANCODE_W]) {
         vec3 next_pos = {
             .x = cam.position.x + front.x * moveSpeed,
-            .y = cam.position.y + front.y * moveSpeed,
+            .y = cam.position.y , //+ front.y * moveSpeed,
             .z = cam.position.z + front.z * moveSpeed
         };
         
-/*        // Check if next position is within the maze boundaries
-        if (next_pos.x - cameraRadius < 0 || next_pos.x + cameraRadius >= MAZE_WIDTH ||
-            next_pos.y - cameraRadius < 0 || next_pos.y + cameraRadius >= MAZE_DEPTH ||
-            next_pos.z - cameraRadius < 0 || next_pos.z + cameraRadius >= MAZE_HEIGHT) {
-            return;
-        } */
+
         // Check for collisions with walls
         int collides_with_wall = 0;
 			for (int i = 0; i < wallCount; i++) {
@@ -375,21 +512,17 @@ void update_camera() {
         haveKey = 1; // Set haveKey to 1
 		}
 		cam.position = next_pos;
+		performExitActions();
 		}
     }
     if (keys[SDL_SCANCODE_S]) {
         vec3 next_pos = {
             .x = cam.position.x - front.x * moveSpeed,
-            .y = cam.position.y - front.y * moveSpeed,
+            .y = cam.position.y, // - front.y * moveSpeed,
             .z = cam.position.z - front.z * moveSpeed
         };
 		
-/*        // Check if next position is within the maze boundaries
-        if (next_pos.x - cameraRadius < 0 || next_pos.x + cameraRadius >= MAZE_WIDTH ||
-            next_pos.y - cameraRadius < 0 || next_pos.y + cameraRadius >= MAZE_DEPTH ||
-            next_pos.z - cameraRadius < 0 || next_pos.z + cameraRadius >= MAZE_HEIGHT) {
-            return;
-        } */
+
         // Check for collisions with walls
         int collides_with_wall = 0;
 			for (int i = 0; i < wallCount; i++) {
@@ -411,6 +544,7 @@ void update_camera() {
         haveKey = 1; // Set haveKey to 1
 		}
 		cam.position = next_pos;
+		performExitActions();
 		}
     }
     if (keys[SDL_SCANCODE_A]) {
@@ -422,12 +556,7 @@ void update_camera() {
             .z = cam.position.z + right.z * moveSpeed
         };
 		
-/*        // Check if next position is within the maze boundaries
-        if (next_pos.x - cameraRadius < 0 || next_pos.x + cameraRadius >= MAZE_WIDTH ||
-            next_pos.y - cameraRadius < 0 || next_pos.y + cameraRadius >= MAZE_DEPTH ||
-            next_pos.z - cameraRadius < 0 || next_pos.z + cameraRadius >= MAZE_HEIGHT) {
-            return;
-        } */
+
         // Check for collisions with walls
         int collides_with_wall = 0;
 			for (int i = 0; i < wallCount; i++) {
@@ -449,6 +578,7 @@ void update_camera() {
         haveKey = 1; // Set haveKey to 1
 		}
 		cam.position = next_pos;
+		performExitActions();
 		}
     }
     if (keys[SDL_SCANCODE_D]) {
@@ -458,12 +588,7 @@ void update_camera() {
             .z = cam.position.z - right.z * moveSpeed
         };
 		
-/*        // Check if next position is within the maze boundaries
-        if (next_pos.x - cameraRadius < 0 || next_pos.x + cameraRadius >= MAZE_WIDTH ||
-            next_pos.y - cameraRadius < 0 || next_pos.y + cameraRadius >= MAZE_DEPTH ||
-            next_pos.z - cameraRadius < 0 || next_pos.z + cameraRadius >= MAZE_HEIGHT) {
-            return;
-        } */
+
         // Check for collisions with walls
         int collides_with_wall = 0;
 			for (int i = 0; i < wallCount; i++) {
@@ -485,6 +610,7 @@ void update_camera() {
         haveKey = 1; // Set haveKey to 1
 		}
 		cam.position = next_pos;
+		performExitActions();
 		}
     }
 		
@@ -496,21 +622,8 @@ void update_camera() {
 }
 
 
-void displayCameraPosition() {
-    double modelViewMatrix[16];
-    glGetDoublev(GL_MODELVIEW_MATRIX, modelViewMatrix);
+void drawSkybox() {
 
-    double cameraX = modelViewMatrix[12];
-    double cameraY = modelViewMatrix[13];
-    double cameraZ = modelViewMatrix[14];
-
-	float pitch = cam.pitch;
-    float yaw = cam.yaw;
-	
-    //printf("Camera Position: X=%.2f, Y=%.2f, Z=%.2f\n", cameraX, cameraY, cameraZ);
-	//printf("Camera Pitch: %.2f\n", pitch);
-    //printf("Camera Yaw: %.2f\n", yaw);
-	
 GLuint eszak = loadTexture("assets/skybox_north.bmp");
 GLuint kelet = loadTexture("assets/skybox_east.bmp");
 GLuint del = loadTexture("assets/skybox_south.bmp");
@@ -521,7 +634,7 @@ GLuint bottom = loadTexture("assets/skybox_bottom.bmp");
 glDepthMask(GL_FALSE);
 glBindTexture(GL_TEXTURE_2D,nyugat);
 glBegin(GL_QUADS);
-		glColor3f(1.0, 1.0, 1.0);
+		glNormal3f(-1.0f, 0.0f, 0.0f);
 		glTexCoord2f(1.0f, 1.0f); glVertex3f(55.0 + cam.position.x, -55.0 + cam.position.y, 55.0 + cam.position.z); //jobb alsó
 		glTexCoord2f(1.0f, 0.0f); glVertex3f(55.0 + cam.position.x, 55.0 + cam.position.y, 55.0 + cam.position.z); //jobb felső
 		glTexCoord2f(0.0f, 0.0f); glVertex3f(55.0 + cam.position.x, 55.0 + cam.position.y, -55.0 + cam.position.z); //bal felső
@@ -531,7 +644,7 @@ glDeleteTextures(1, &nyugat);
 
 glBindTexture(GL_TEXTURE_2D, eszak);
 glBegin(GL_QUADS);
-		glColor3f(1.0, 1.0, 1.0);
+		glNormal3f(0.0f, 0.0f, -1.0f);
 		glTexCoord2f(1.0f, 1.0f); glVertex3f(-55.0 + cam.position.x, -55.0 + cam.position.y, 55.0 + cam.position.z);
 		glTexCoord2f(1.0f, 0.0f); glVertex3f(-55.0 + cam.position.x, 55.0 + cam.position.y, 55.0 + cam.position.z);
 		glTexCoord2f(0.0f, 0.0f); glVertex3f(55.0 + cam.position.x, 55.0 + cam.position.y, 55.0 + cam.position.z);
@@ -541,7 +654,7 @@ glDeleteTextures(1, &eszak);
 
 glBindTexture(GL_TEXTURE_2D, kelet);
 glBegin(GL_QUADS);
-		glColor3f(1.0, 1.0, 1.0);
+		glNormal3f(1.0f, 0.0f, 0.0f);
 		glTexCoord2f(1.0f, 1.0f); glVertex3f(-55.0 + cam.position.x, -55.0 + cam.position.y, -55.0 + cam.position.z);
 		glTexCoord2f(1.0f, 0.0f); glVertex3f(-55.0 + cam.position.x, 55.0 + cam.position.y, -55.0 + cam.position.z);
 		glTexCoord2f(0.0f, 0.0f); glVertex3f(-55.0 + cam.position.x, 55.0 + cam.position.y, 55.0 + cam.position.z);
@@ -551,7 +664,7 @@ glDeleteTextures(1, &kelet);
 
 glBindTexture(GL_TEXTURE_2D, del);
 glBegin(GL_QUADS);
-		glColor3f(1.0, 1.0, 1.0);
+		glNormal3f(0.0f, 0.0f, 1.0f);
 		glTexCoord2f(1.0f, 1.0f); glVertex3f(55.0 + cam.position.x, -55.0 + cam.position.y, -55.0 + cam.position.z);
 		glTexCoord2f(1.0f, 0.0f); glVertex3f(55.0 + cam.position.x, 55.0 + cam.position.y, -55.0 + cam.position.z);
 		glTexCoord2f(0.0f, 0.0f); glVertex3f(-55.0 + cam.position.x, 55.0 + cam.position.y, -55.0 + cam.position.z);
@@ -561,7 +674,7 @@ glDeleteTextures(1, &del);
 
 glBindTexture(GL_TEXTURE_2D, top);
 glBegin(GL_QUADS);
-		glColor3f(1.0, 1.0, 1.0);
+		glNormal3f(0.0f, -1.0f, 0.0f);
 		glTexCoord2f(0.0f, 1.0f); glVertex3f(55.0 + cam.position.x, 55.0 + cam.position.y, 55.0 + cam.position.z);
 		glTexCoord2f(1.0f, 1.0f); glVertex3f(-55.0 + cam.position.x, 55.0 + cam.position.y, 55.0 + cam.position.z);
 		glTexCoord2f(1.0f, 0.0f); glVertex3f(-55.0 + cam.position.x, 55.0 + cam.position.y, -55.0 + cam.position.z);
@@ -571,7 +684,7 @@ glDeleteTextures(1, &top);
 
 glBindTexture(GL_TEXTURE_2D, bottom);
 glBegin(GL_QUADS);
-		glColor3f(1.0, 1.0, 1.0);
+		glNormal3f(0.0f, 1.0f, 0.0f);
 		glTexCoord2f(0.0f, 1.0f); glVertex3f(55.0 + cam.position.x, -55.0 + cam.position.y, 55.0 + cam.position.z);
 		glTexCoord2f(1.0f, 1.0f); glVertex3f(-55.0 + cam.position.x, -55.0 + cam.position.y, 55.0 + cam.position.z);
 		glTexCoord2f(1.0f, 0.0f); glVertex3f(-55.0 + cam.position.x, -55.0 + cam.position.y, -55.0 + cam.position.z);
@@ -648,6 +761,223 @@ void generateMaze() {
 				}		
 			}
 	}
+
+ 	for (int i = 0; i <= MAZE_WIDTH-1; i++) {
+						if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH){
+						wallPositions[wallCount][0][0][0] = i;
+						wallPositions[wallCount][0][0][1] = 0.0f;
+						wallPositions[wallCount][0][0][2] = MAZE_HEIGHT;
+						wallPositions[wallCount][1][0][0] = i + 1;
+						wallPositions[wallCount][1][0][1] = 1;
+						wallPositions[wallCount][1][0][2] = MAZE_HEIGHT;
+						wallCount++;
+					}
+	}
+
+for (int i = 0; i < MAZE_WIDTH; i++) {
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = i;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = 0.0f;
+        wallPositions[wallCount][1][0][0] = i + 1;
+        wallPositions[wallCount][1][0][1] = 1.0f;
+        wallPositions[wallCount][1][0][2] = 0.0f;
+        wallCount++;
+    }
+}
+
+for (int i = 0; i < MAZE_HEIGHT; i++) {
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = 0.0f;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = i;
+        wallPositions[wallCount][1][0][0] = 0.0f;
+        wallPositions[wallCount][1][0][1] = 1.0f;
+        wallPositions[wallCount][1][0][2] = i + 1;
+        wallCount++;
+    }
+}
+
+for (int i = 0; i < exitCol - 1; i++) {
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = i ;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH;
+        wallPositions[wallCount][1][0][1] = 1.0f;
+        wallPositions[wallCount][1][0][2] = i + 1;
+        wallCount++;
+    }
+}
+
+for (int i = exitCol; i < MAZE_HEIGHT; i++) {
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = i;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH;
+        wallPositions[wallCount][1][0][1] = 1.0f;
+        wallPositions[wallCount][1][0][2] = i + 1;
+        wallCount++;
+    }
+}
+
+if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+    wallPositions[wallCount][0][0][0] = MAZE_WIDTH;
+    wallPositions[wallCount][0][0][1] = 0.0f;
+    wallPositions[wallCount][0][0][2] = exitCol - 0.75;
+    wallPositions[wallCount][1][0][0] = MAZE_WIDTH;
+    wallPositions[wallCount][1][0][1] = 1.0f;
+    wallPositions[wallCount][1][0][2] = exitCol - 1.0;
+    wallCount++;
+}
+
+if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+    wallPositions[wallCount][0][0][0] = MAZE_WIDTH;
+    wallPositions[wallCount][0][0][1] = 0.0f;
+    wallPositions[wallCount][0][0][2] = exitCol;
+    wallPositions[wallCount][1][0][0] = MAZE_WIDTH;
+    wallPositions[wallCount][1][0][1] = 1.0f;
+    wallPositions[wallCount][1][0][2] = exitCol - 0.25;
+    wallCount++;
+}
+
+if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+    wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 1.0;
+    wallPositions[wallCount][0][0][1] = 0.0f;
+    wallPositions[wallCount][0][0][2] = exitCol - 0.75;
+    wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 1.0;
+    wallPositions[wallCount][1][0][1] = 1.0f;
+    wallPositions[wallCount][1][0][2] = exitCol - 0.75;
+    wallCount++;
+}
+
+if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+    wallPositions[wallCount][0][0][0] = MAZE_WIDTH;
+    wallPositions[wallCount][0][0][1] = 0.0f;
+    wallPositions[wallCount][0][0][2] = exitCol - 0.25;
+    wallPositions[wallCount][1][0][0] = MAZE_WIDTH+1.0;
+    wallPositions[wallCount][1][0][1] = 1.0f;
+    wallPositions[wallCount][1][0][2] = exitCol - 0.25;
+    wallCount++;
+}
+
+if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+    wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 1.0;
+    wallPositions[wallCount][0][0][1] = 0.0f;
+    wallPositions[wallCount][0][0][2] = exitCol - 0.75;
+    wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 1.0;
+    wallPositions[wallCount][1][0][1] = 1.0f;
+    wallPositions[wallCount][1][0][2] = exitCol - 1.0;
+    wallCount++;
+}
+
+if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+    wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 1.0;
+    wallPositions[wallCount][0][0][1] = 0.0f;
+    wallPositions[wallCount][0][0][2] = exitCol;
+    wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 1.0;
+    wallPositions[wallCount][1][0][1] = 1.0f;
+    wallPositions[wallCount][1][0][2] = exitCol - 0.25;
+    wallCount++;
+}
+
+for (int i = 1; i < 3; i++) {
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 1.0;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = exitCol - 1 + i;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 1.0;
+        wallPositions[wallCount][1][0][1] = 1.0f;
+        wallPositions[wallCount][1][0][2] = exitCol - 1 + i + 1;
+        wallCount++;
+    }
+
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 1.0;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = exitCol - 4 + i;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 1.0;
+        wallPositions[wallCount][1][0][1] = 1.0f;
+        wallPositions[wallCount][1][0][2] = exitCol - 4 + i + 1;
+        wallCount++;
+    }
+}
+
+for (int i = 0; i < 5; i++) {
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 1.0 + i + 1;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = exitCol - 3;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 1.0 + i ;
+        wallPositions[wallCount][1][0][1] = 1.0f;
+        wallPositions[wallCount][1][0][2] = exitCol - 3;
+        wallCount++;
+    }
+
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 1.0 + i + 1;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = exitCol + 2;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 1.0 + i ;
+        wallPositions[wallCount][1][0][1] = 1.0f;
+        wallPositions[wallCount][1][0][2] = exitCol + 2;
+        wallCount++;
+    }
+
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 6.0;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = exitCol - 3 + i;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 6.0;
+        wallPositions[wallCount][1][0][1] = 1.0f;
+        wallPositions[wallCount][1][0][2] = exitCol - 3 + i + 1;
+        wallCount++;
+    }
+}
+
+for (int i = 0; i < 1; i++) {
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 3.0;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = exitCol - 1 + i;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 3.0;
+        wallPositions[wallCount][1][0][1] = 0.3f;
+        wallPositions[wallCount][1][0][2] = exitCol - 1 + i +1;
+        wallCount++;
+    }
+
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 4.0;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = exitCol - 1 + i ;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 4.0;
+        wallPositions[wallCount][1][0][1] = 0.3f;
+        wallPositions[wallCount][1][0][2] = exitCol - 1 + i + 1;
+        wallCount++;
+    }
+	
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 3.0 + i + 1 ;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = exitCol - 1;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 3.0 + i ;
+        wallPositions[wallCount][1][0][1] = 0.3f;
+        wallPositions[wallCount][1][0][2] = exitCol - 1;
+        wallCount++;
+    }
+	
+    if (wallCount < MAZE_WIDTH * MAZE_HEIGHT * MAZE_DEPTH) {
+        wallPositions[wallCount][0][0][0] = MAZE_WIDTH + 3.0 + i + 1;
+        wallPositions[wallCount][0][0][1] = 0.0f;
+        wallPositions[wallCount][0][0][2] = exitCol;
+        wallPositions[wallCount][1][0][0] = MAZE_WIDTH + 3.0 + i;
+        wallPositions[wallCount][1][0][1] = 0.3f;
+        wallPositions[wallCount][1][0][2] = exitCol;
+        wallCount++;
+    }
+}
+	
 }
 
 void randomPickRoute(int maze[][MAZE_WIDTH], int *row, int *col) {
@@ -684,6 +1014,23 @@ void randomPickFarRoute(int maze[][MAZE_WIDTH], int firstRow, int firstCol, int 
             found = 1; // Set the flag to indicate the far route is found
             *row = randomRow;
             *col = randomCol;
+        }
+    }
+}
+
+void randomPickExitRoute(int maze[][MAZE_WIDTH], int *row, int *col) {
+    srand(time(NULL)); // Initialize the random number generator
+
+    int found = 0; // Flag variable to control the search process
+
+    while (!found) {
+        int randomCol = rand() % MAZE_HEIGHT;
+
+        if (maze[20][randomCol] == ROUTE) {
+            found = 1; // Set the flag to indicate the route is found
+            *row = MAZE_WIDTH;
+            *col = randomCol;
+            return;
         }
     }
 }
@@ -743,23 +1090,96 @@ void draw_key(Object* key, float time)
 		glTranslatef(key->position.x+0.5, 0.4+translation_offset, key->position.z+0.5);
 		glBindTexture(GL_TEXTURE_2D, key->texture);
 		glScalef(scale, scale, scale);
-
 		draw_model(&key->model);
 	glPopMatrix();
 }
 
-void draw_door(Object* door, float time)
+
+void performExitActions() {
+    // Check if the player has the key
+    if (haveKey == 1) {
+        // Check if the player is close to the exit
+        if (isPlayerCloseToExit() && !exitActionsPerformed) {
+            // Perform actions when the player is close to the exit with the key
+            printf("Congratulations! You have escaped the maze!\n");
+			exitActionsPerformed = 1;
+        }
+    }
+}
+
+float calculate_door_width(const Model* model) {
+    float minX = FLT_MAX;
+    float maxX = -FLT_MAX;
+
+    for (int i = 0; i < model->n_vertices; ++i) {
+        float x = model->vertices[i].x;
+        if (x < minX)
+            minX = x;
+        if (x > maxX)
+            maxX = x;
+    }
+
+    return maxX - minX;
+}
+
+void draw_door(Object* door, float time) {
+    door->position.x = exitRow;
+    door->position.z = exitCol;
+
+    float scale = 0.005f;
+    float doorWidth = calculate_door_width(&door->model);
+
+    glPushMatrix();
+    glTranslatef(door->position.x+0.075, 0, door->position.z - 0.5);
+    glBindTexture(GL_TEXTURE_2D, door->texture);
+    glRotatef(-90, 0, 1, 0);
+    glScalef(scale, scale, scale);
+
+    if (doorOpen) {
+        float pivotX = doorWidth / 2.0f;
+        float targetRotation = -90.0f;
+
+        if (doorRotation > targetRotation) {
+            float angle = doorRotation - time * 0.5f;
+            if (angle < targetRotation)
+                angle = targetRotation;
+
+            glTranslatef(doorWidth - pivotX, 0.0f, 0.0f);  // Translate to the hinges position
+            glRotatef(angle, 0, 1, 0);  // Rotate around the Y-axis
+            glTranslatef(-doorWidth + pivotX, 0.0f, 0.0f);  // Translate back to the original position
+
+            doorRotation = angle;
+        }
+        else {
+            // Keep the door open at -90 degrees
+            glTranslatef(doorWidth - pivotX, 0.0f, 0.0f);  // Translate to the hinges position
+            glRotatef(targetRotation, 0, 1, 0);  // Rotate around the Y-axis
+            glTranslatef(-doorWidth + pivotX, 0.0f, 0.0f);  // Translate back to the original position
+        }
+    }
+
+    draw_model(&door->model);
+    glPopMatrix();
+}
+
+void draw_cup(Object* cup, float time)
 {
-	float scale = 0.005f;
-	
+	cup->position.x = MAZE_WIDTH+3.5;
+	cup->position.y = 4;
+	cup->position.z = exitCol-0.5;
+	float scale = 0.4f;
+
 	glPushMatrix();
-		//glTranslatef(door->position.x, 0.4, door->position.z);
-		glBindTexture(GL_TEXTURE_2D, door->texture);
+		glTranslatef(cup->position.x, 1.45, cup->position.z);
+		glBindTexture(GL_TEXTURE_2D, cup->texture);
+		glRotatef(90, 0, 1, 0);
+		glRotatef(-90, 1, 0, 0);
 		glScalef(scale, scale, scale);
-		draw_model(&door->model);
+		glColor3f(0.855, 0.647, 0.125);
+		draw_model(&cup->model);
 	glPopMatrix();
 }
- 
+
 int main(int argc, char **argv) {
 SDL_Init(SDL_INIT_EVERYTHING);
 SDL_Window *window = SDL_CreateWindow("Belus László Grafika beadandó feladat", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_OPENGL);
@@ -771,64 +1191,57 @@ gluPerspective(FOV, (float) WIDTH / HEIGHT, NEAR_CLIP, FAR_CLIP);
 glMatrixMode(GL_MODELVIEW);
 glLoadIdentity();
 glEnable(GL_DEPTH_TEST); 
-glEnable(GL_LIGHTING); 
-glEnable(GL_LIGHT0);  
+glEnable(GL_LIGHTING);
+glEnable(GL_LIGHT0);
+    
 clock_t start_time = clock();
-
 srand(time(NULL));
     generateMaze();
-
     randomPickRoute(maze, &firstRow, &firstCol);
-    printf("First Route: (%d, %d)\n", firstRow, firstCol);
-
 	randomPickFarRoute(maze, firstRow, firstCol, &secondRow, &secondCol);
-	printf("Second Far Route: (%d, %d)\n", secondRow, secondCol);
+	randomPickExitRoute(maze, &exitRow, &exitCol);
 	
-	sunlight.direction[0] = 5.0f;  // X direction
-	sunlight.direction[1] = 5.0f; // Y direction
-	sunlight.direction[2] = 5.0f; // Z direction
-	sunlight.intensity = 0.5f;     // Intensity (adjust as needed)
-	
-glEnable(GL_TEXTURE_2D);
-
 	Object key;
-	
 	load_model(&key.model, "data/models/key2.obj");
 	key.texture = loadTexture("data/textures/key_specular.bmp");
-		
+
 	Object door;
-	
 	load_model(&door.model, "data/models/door.obj");
 	door.texture = loadTexture("data/textures/door.bmp");
-	door.position.x = 1;
-    door.position.y = 2;
-    door.position.z = 1;	
+
+	Object cup;
+	load_model(&cup.model, "data/models/trophy.obj");
 	
+	init();
 while (1) {
 	clock_t current_time = clock();
     float elapsed_time = (float)(current_time - start_time) / CLOCKS_PER_SEC;
+	
 handle_events();
-
 update_camera();
 glClearColor(0.5, 0.5, 1.0, 1.0);
 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
    drawMaze();
+	draw_cup(&cup, elapsed_time);
    if (!haveKey){
     draw_key(&key, elapsed_time);
    }
+   
+   if (!exitActionsPerformed){
+	   doorOpen = false;
+   }
+   else doorOpen = true;
+   
 		if(isHelpOn)
 	{
 		draw_help();
 	}
 	draw_door(&door, elapsed_time);
-displayCameraPosition();
+drawSkybox();
 SDL_GL_SwapWindow(window);
 }
-
-
 SDL_GL_DeleteContext(context);
 SDL_DestroyWindow(window);
 SDL_Quit();
-
 return 0;
 }

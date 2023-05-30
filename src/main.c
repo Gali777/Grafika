@@ -1081,7 +1081,7 @@ void draw_key(Object* key, float time)
 {
 	key->position.x = secondRow;
 	key->position.z = secondCol;
-	float scale = 0.005f;
+	float scale = 0.0005f;
 	
 	float translation_distance = 0.1f;
 	float translation_offset = translation_distance * sinf(time);

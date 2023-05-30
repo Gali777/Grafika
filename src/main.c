@@ -93,8 +93,6 @@ void changeLightintensity(float amount) {
  
 	GLfloat sun_intensity[] = { sunlight.intensity, sunlight.intensity, sunlight.intensity, 1.0 };
 	glLightfv(GL_LIGHT0, GL_DIFFUSE, sun_intensity);
-	    printf("Sunlight intensity:\n");
-        printf("%.2f\n", sunlight.intensity);
     }
 
 int isHelpOn = 0;
